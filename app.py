@@ -54,10 +54,14 @@ def run_download(job_id, url, format_choice, format_id, cookies_browser=None):
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
-    elif format_id:
-        cmd += ["-f", f"{format_id}+bestaudio/best", "--merge-output-format", "mp4"]
     else:
-        cmd += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
+        # Prefer H.264 video + AAC audio so the MP4 plays in QuickTime/iOS out of
+        # the box (VP9/AV1 inside MP4 does not). Falls back to whatever exists.
+        cmd += ["-S", "vcodec:h264,acodec:m4a", "--merge-output-format", "mp4"]
+        if format_id:
+            cmd += ["-f", f"{format_id}+bestaudio/best"]
+        else:
+            cmd += ["-f", "bestvideo+bestaudio/best"]
 
     cmd.append(url)
 
@@ -134,13 +138,17 @@ def get_info():
 
         info = parse_ytdlp_json(result.stdout)
 
-        # Build quality options — keep best format per resolution
+        # Build quality options — keep best format per resolution.
+        # Prefer H.264 (avc1) at a given height for QuickTime compatibility,
+        # then highest bitrate.
+        def rank(f):
+            return ((f.get("vcodec") or "").startswith("avc1"), f.get("tbr") or 0)
+
         best_by_height = {}
         for f in info.get("formats", []):
             height = f.get("height")
             if height and f.get("vcodec", "none") != "none":
-                tbr = f.get("tbr") or 0
-                if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
+                if height not in best_by_height or rank(f) > rank(best_by_height[height]):
                     best_by_height[height] = f
 
         formats = []
