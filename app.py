@@ -12,6 +12,23 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 jobs = {}
 
+# Browsers yt-dlp can read cookies from (--cookies-from-browser). Allowlist so
+# the value coming from the client can never be turned into arbitrary args.
+SUPPORTED_BROWSERS = {"brave", "chrome", "chromium", "edge", "firefox", "opera", "safari", "vivaldi", "whale"}
+DEFAULT_COOKIES_BROWSER = os.environ.get("RECLIP_COOKIES_BROWSER", "").strip().lower()
+
+
+def cookie_args(browser):
+    """Return yt-dlp args to pull cookies from a local browser, or [] for none.
+
+    Needed for sites that answer 400/login-required to anonymous requests
+    (Telegram, Instagram, etc.). Falls back to RECLIP_COOKIES_BROWSER env var.
+    """
+    browser = (browser or DEFAULT_COOKIES_BROWSER or "").strip().lower()
+    if browser in SUPPORTED_BROWSERS:
+        return ["--cookies-from-browser", browser]
+    return []
+
 
 def parse_ytdlp_json(stdout):
     """Parse yt-dlp JSON output.
@@ -29,11 +46,11 @@ def parse_ytdlp_json(stdout):
     raise ValueError("yt-dlp returned no data")
 
 
-def run_download(job_id, url, format_choice, format_id):
+def run_download(job_id, url, format_choice, format_id, cookies_browser=None):
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
-    cmd = ["yt-dlp", "--no-playlist", "-o", out_template]
+    cmd = ["yt-dlp", "--no-playlist", "-o", out_template] + cookie_args(cookies_browser)
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
@@ -94,6 +111,14 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/config")
+def get_config():
+    return jsonify({
+        "browsers": sorted(SUPPORTED_BROWSERS),
+        "default_cookies_browser": DEFAULT_COOKIES_BROWSER if DEFAULT_COOKIES_BROWSER in SUPPORTED_BROWSERS else "",
+    })
+
+
 @app.route("/api/info", methods=["POST"])
 def get_info():
     data = request.json
@@ -101,7 +126,7 @@ def get_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    cmd = ["yt-dlp", "--no-playlist", "-j", url]
+    cmd = ["yt-dlp", "--no-playlist", "-j"] + cookie_args(data.get("cookies_browser")) + [url]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -147,7 +172,7 @@ def get_playlist_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    cmd = ["yt-dlp", "--flat-playlist", "-J", url]
+    cmd = ["yt-dlp", "--flat-playlist", "-J"] + cookie_args(data.get("cookies_browser")) + [url]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -170,6 +195,7 @@ def start_download():
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
     title = data.get("title", "")
+    cookies_browser = data.get("cookies_browser")
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -177,7 +203,9 @@ def start_download():
     job_id = uuid.uuid4().hex[:10]
     jobs[job_id] = {"status": "downloading", "url": url, "title": title}
 
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id))
+    thread = threading.Thread(
+        target=run_download, args=(job_id, url, format_choice, format_id, cookies_browser)
+    )
     thread.daemon = True
     thread.start()
 

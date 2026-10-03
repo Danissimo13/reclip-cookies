@@ -122,6 +122,22 @@
     .pill.active { background: var(--fg); color: var(--bg); }
     .pill:not(.active):hover { color: var(--fg); }
 
+    .cookie-select {
+      padding: 9px 12px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.76rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .cookie-select:hover, .cookie-select:focus { color: var(--fg); outline: none; }
+    .cookie-select.on { color: var(--fg); border-color: var(--fg); }
+
     .fetch-btn {
       flex: 1;
       padding: 10px 20px;
@@ -395,6 +411,17 @@
         <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
         <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
       </div>
+      <select class="cookie-select" id="cookieBrowser" title="Use cookies from a browser (for sites that need login: Telegram, Instagram...)" onchange="setCookieBrowser(this.value)">
+        <option value="">No cookies</option>
+        <option value="brave">Brave</option>
+        <option value="chrome">Chrome</option>
+        <option value="chromium">Chromium</option>
+        <option value="edge">Edge</option>
+        <option value="firefox">Firefox</option>
+        <option value="opera">Opera</option>
+        <option value="safari">Safari</option>
+        <option value="vivaldi">Vivaldi</option>
+      </select>
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
     </div>
 
@@ -410,6 +437,27 @@
   <script>
     let currentFormat = 'video';
     let cardData = [];
+    let cookieBrowser = '';
+
+    function setCookieBrowser(val) {
+      cookieBrowser = val || '';
+      const sel = document.getElementById('cookieBrowser');
+      sel.value = cookieBrowser;
+      sel.classList.toggle('on', !!cookieBrowser);
+      try { localStorage.setItem('reclip.cookieBrowser', cookieBrowser); } catch (e) {}
+    }
+
+    (async function initCookieBrowser() {
+      let saved = null;
+      try { saved = localStorage.getItem('reclip.cookieBrowser'); } catch (e) {}
+      if (saved === null) {
+        try {
+          const cfg = await (await fetch('/api/config')).json();
+          saved = cfg.default_cookies_browser || '';
+        } catch (e) { saved = ''; }
+      }
+      setCookieBrowser(saved);
+    })();
 
     function setFormat(btn) {
       document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
@@ -468,7 +516,7 @@
           const res = await fetch('/api/playlist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: urls[i] }),
+            body: JSON.stringify({ url: urls[i], cookies_browser: cookieBrowser }),
           });
           const data = await res.json();
           if (data.urls) {
@@ -488,7 +536,7 @@
           const res = await fetch('/api/info', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify({ url, cookies_browser: cookieBrowser }),
           });
           const data = await res.json();
           if (data.error) {
@@ -634,6 +682,7 @@
             format: currentFormat,
             format_id: c.selectedFormatId,
             title: c.title || '',
+            cookies_browser: cookieBrowser,
           }),
         });
         const data = await res.json();

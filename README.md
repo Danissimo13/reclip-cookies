@@ -44,6 +44,23 @@ docker build -t reclip . && docker run -p 8899:8899 reclip
 4. Select quality/resolution if available
 5. Click **Download** on individual videos, or **Download All**
 
+## Sites that need login (Telegram, Instagram, ...)
+
+Some sites return `400` / "login required" to anonymous requests. Pick your
+browser in the **cookies** dropdown next to the MP4/MP3 toggle and ReClip will
+run yt-dlp with `--cookies-from-browser <browser>`, reusing the session you are
+already logged into. The choice is remembered in your browser.
+
+To set a default for everyone (e.g. in Docker), use the env var:
+
+```bash
+RECLIP_COOKIES_BROWSER=brave ./reclip.sh
+```
+
+Supported values: `brave`, `chrome`, `chromium`, `edge`, `firefox`, `opera`,
+`safari`, `vivaldi`, `whale`. Only works when ReClip runs on the same machine as
+the browser. On macOS the first run may ask for Keychain access to decrypt cookies.
+
 ## Supported Sites
 
 Anything [yt-dlp supports](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), including:
